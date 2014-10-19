@@ -1,25 +1,166 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "Course project 1 (of 2)"
+author: "manuel-at-coursera"
+date: "Monday, October 20, 2014"
+output: html_document
 ---
 
+This document has been created as the course project 1 (of 2) for the Coursera online course "Reproducible Research":
+https://www.coursera.org/course/repdata
 
-## Loading and preprocessing the data
-
-
-
-## What is mean total number of steps taken per day?
-
-
-
-## What is the average daily activity pattern?
+Describing the steps for downloading the data is not part of this assignment, wherefore we start directly with loading the data.
+However, the data is available here:
+https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip
 
 
+#### Loading and preprocessing the data
 
-## Imputing missing values
+We assume that the data is downloaded and unzipped and placed in the current working directory. With the following code the data can be loaded into R.
+
+```{r}
+data <- read.csv("activity.csv")
+```
+
+For our convinience in the later analysis, we pre-calculate the total number of steps per day. This means, for each day (as per the column data\$date) we sum up the number of steps, given in the column data\$steps. Afterwards, we adjust the column names.
+
+```{r}
+stepsPerDay <- aggregate(data$steps ~ data$date, data=data, FUN=sum)
+colnames(stepsPerDay) <- c("date", "total")
+```
 
 
+#### What is mean total number of steps taken per day?
 
-## Are there differences in activity patterns between weekdays and weekends?
+To start with, we have a look at the distribution of the total number of steps taken per day.  
+
+```{r}
+with(stepsPerDay, hist(total, 
+                       breaks = seq(min(total), max(total), l=length(total)+1), 
+                       main = "Histogram of the total number of steps taken per day", 
+                       xlab = "Total number of steps", 
+                       col=rgb(0,0,1,1/4) ) )
+```
+
+For this distribution, the mean and median are as follows:
+```{r}
+print(paste("The mean value is:", mean(stepsPerDay$total)))
+print(paste("The median is:", median(stepsPerDay$total)))
+```
+
+
+#### What is the average daily activity pattern?
+
+As each interval represent a 5-minute-time-slot, we have in total 288 intervals for the 24 h of a day. 
+The plot below shows in the x-axis all intervals of a day, from "0" to "2355" (which is equivalent to 23 hours and 55 minutes). The y-axis shows the average number of steps taken within each interval, based on all days in the data set. The vertical blue line marks the peak interval. 
+
+```{r}
+averagePerInterval <- aggregate(data$steps ~ data$interval, data=data, FUN=mean)
+colnames(averagePerInterval) <- c("interval", "average")
+with(averagePerInterval, 
+     plot(interval, average, type = "l", 
+          main = "Plot of the average number of steps taken per interval", 
+          xlab = "Interval", 
+          ylab = "Average number of steps") )
+maxInterval <- averagePerInterval[which.max(averagePerInterval$average),]
+abline(v = maxInterval[,1], col = "blue", lwd = 2)
+print( paste("Interval number", maxInterval[1,1], 
+             "contains the hightest value, which is", maxInterval[1,2], 
+             "steps (on average)") )
+```
+
+Interval 835 corresponds to the 5 minute interval between 8:35 and 8:39 am. 
+
+
+#### Imputing missing values
+
+```{r}
+na <- sum(is.na(data$steps))
+all <- length(data[,1])
+p <- round(na / all * 100, digits = 2)
+print( paste("In total, the data set contains", 
+             all, 
+             "observations. ", 
+             na, 
+             "of them are missing values (NA), which is a share of",
+             p, 
+             "percent (rounded)."))
+```
+    
+The following code shows a simple approach to replace the missing values in the data set. Each NA is replaced by the mean value based on all non-missing values within the same interval (independent from the day). This replacement is done in a new data set, called "dataMeans". Afterwards the same histogram is plotted as for the very first analysis.
+
+```{r}
+dataMeans <- data
+for(i in unique(data$interval)) {
+    dataMeans[is.na(dataMeans$steps) & dataMeans$interval == i, 1] <- mean(data[data$interval == i, 1], na.rm = TRUE)
+}
+stepsPerDayMeans <- aggregate(dataMeans$steps ~ dataMeans$date, data=dataMeans, FUN=sum)
+colnames(stepsPerDayMeans) <- c("date", "total")
+
+with(stepsPerDayMeans, hist(total, 
+                       breaks = seq(min(total), max(total), l=length(total)+1), 
+                       main = "Histogram of the total number of steps taken per day", 
+                       xlab = "Total number of steps", 
+                       col=rgb(1,0,0,1/4) ) )
+```
+
+
+For this distribution (with NAs replaced), the mean and median are as follows:
+```{r}
+print(paste("The mean value is:", mean(stepsPerDayMeans$total)))
+print(paste("The median is:", median(stepsPerDayMeans$total)))
+```
+
+In comparison with the original distribution at the beginning the mean value has not changed at all and the median has changed only a very little bit. What has changed is the number of days, for which a total number of steps can be reported. 
+The original histogram data contained only 53 diferent days, whereby the histogram data with replaced NAs contains 61 distinct days.
+
+```{r}
+print("The number of distinct days is ...")
+print(paste("Original data:", length(stepsPerDay$date)))
+print(paste("Data with NA replaced:", length(stepsPerDayMeans$date)))
+```
+
+
+#### Are there differences in activity patterns between weekdays and weekends?
+
+Finally, we will check if there are different activity patterns for weekdays versus weekends. For this, we add a colum assigning the kind of day to the data set with the replaced NAs. 
+
+```{r}
+library(timeDate)
+dataMeans$days <- ("weekend")
+dataMeans[isWeekday(dataMeans$date),4] <- "weekday"
+dataMeans$days <- as.factor(dataMeans$days)
+```
+
+Now we split the data set, to compute the average number of steps per interval separately for weekdays / weekends. Please note, that the results of the command are hidden, as two very long lists are produced. 
+
+```{r, results="hide"}
+dataByDays <- split(dataMeans, dataMeans$days)
+split(dataMeans, dataMeans$days)
+```
+
+Now the two necessary data sets are aggregated.
+
+```{r}
+averageWeekDay <- aggregate(dataByDays[[1]]$steps ~ dataByDays[[1]]$interval, data=dataByDays[[1]], FUN=mean)
+colnames(averageWeekDay) <- c("interval", "average")
+
+averageWeekEnd <- aggregate(dataByDays[[2]]$steps ~ dataByDays[[2]]$interval, data=dataByDays[[2]], FUN=mean)
+colnames(averageWeekEnd) <- c("interval", "average")
+```
+
+Finally, we can see that on weekends the activity patterns are much more diverse, compared to weekdays.
+
+```{r}
+with(averageWeekDay, 
+     plot(interval, average, type = "l", 
+          main = "Plot of the average number of steps taken per interval (on weekdays)", 
+          xlab = "Interval", 
+          ylab = "Average number of steps") )
+
+with(averageWeekEnd, 
+     plot(interval, average, type = "l", 
+          main = "Plot of the average number of steps taken per interval (on weekends)", 
+          xlab = "Interval", 
+          ylab = "Average number of steps") )
+```
+
